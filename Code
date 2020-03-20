@@ -1,0 +1,315 @@
+//to read the data set
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.util.Random;
+//to get the accuracy and heuristic
+import weka.classifiers.Evaluation;
+import weka.classifiers.bayes.NaiveBayes;
+import weka.core.Instances;
+//import required classes for filttring
+import weka.core.Instances;
+import weka.core.converters.ArffSaver;
+import java.io.File;
+import weka.core.converters.ConverterUtils.DataSource;
+import weka.filters.Filter;
+import weka.filters.unsupervised.attribute.Remove;
+
+class main {
+
+	public static void main(String[] args) throws  Exception{
+
+		//Reading the data
+
+		/* another way to read 		
+		//BufferedReader breader =null;
+		//breader = new BufferedReader(new FileReader ("diabetes.arff"));
+		//Instances train = new Instances (breader);
+		 * 
+		 */
+		Instances train = DataSource.read("data6.arff");//set the name of the file here
+
+		train.setClassIndex(train.numAttributes()-1);
+		//breader.close();
+
+
+		String h = String.format("%.2f", getH(train));
+		System.out.println("Accuracy for all data"+h+" %");
+
+		System.out.println("***********hillClimping***********");
+		String [] result1=	hillClimping( train);
+		System.out.println("***********Simulated annealing ***********"); 
+
+		//set any temperature you want and any alpha
+		String [] result2=	SA(  train,700, .02);
+		
+		
+		System.out.println("\n\n\nResult Summarry:"); 
+		System.out.println("\n\n-for hill climbing"
+				+ "\nnumber of iteration: "+result1[0]+"\t\t\tfinal solution accuracy: "+result1[1]+"%"); 
+		System.out.println("\n\n-for simulated annealing\r\n" 
+				+ "\nnumber of iteration: "+result2[0]+"\t\t\tfinal solution accuracy: "+result2[1]+"%"); 
+		
+
+		//	String s= initalSolution(9);
+	}
+
+	public static double getH(Instances train)throws  Exception
+
+
+	{
+		train.setClassIndex(train.numAttributes()-1);
+		NaiveBayes nB = new NaiveBayes();
+		nB.buildClassifier(train);
+		Evaluation  eval = new Evaluation(train);
+		eval.crossValidateModel(nB, train, 10, new Random(1));
+		double H =100*(eval.correct()/eval.numInstances());
+		return H;
+
+
+	}
+	public static double filtring ( String x,Instances train) throws  Exception{
+
+
+		//use a simple filter to remove a certain attribute	
+		//set up options to remove 1st attribute	
+		String[] opts = new String[]{ "-R",x};
+		//create a Remove object (this is the filter class)
+		Remove remove = new Remove();
+		//set the filter options
+		remove.setOptions(opts);
+		//pass the dataset to the filter
+		remove.setInputFormat(train);
+		//apply the filter
+		Instances newData = Filter.useFilter(train, remove);
+
+		///if we want to save the data
+		/*	//now save the dataset to a new file as we learned before
+			ArffSaver saver = new ArffSaver();
+			saver.setInstances(newData);
+			saver.setFile(new File("newData.arff"));
+			saver.writeBatch();
+		 */
+
+		return getH(newData);
+
+
+
+
+	}
+	//to get the initial solution	
+	public static String initalSolution ( int numberOfAtrr)
+	{
+		//number of deleting
+		Random randomGenerator = new Random();
+		int Select= randomGenerator.nextInt(10) ;//if the random was chosen is 0 then the initial state will be all the set
+
+		if (Select ==0)
+			return "";
+		int numofdeleting = randomGenerator.nextInt(numberOfAtrr-1) + 1;
+		//System.out.println("numofdeleting"+numofdeleting);
+
+		//Create the string with initial value
+		String x="";
+		int firstdelete = randomGenerator.nextInt(numberOfAtrr) + 1;
+		//System.out.println("firstdelete"+firstdelete);
+		String str1 = Integer.toString(firstdelete);
+		x=x.concat(str1);
+		//System.out.println(x);
+
+		//Which column to delete if there more than one
+		for (int i =0;i<numofdeleting-1;i++)
+		{
+			int nextDelete = randomGenerator.nextInt(numberOfAtrr) + 1;
+			//System.out.println("nextDelete"+nextDelete);
+			String str2 = Integer.toString(nextDelete);
+			str2=","+str2;
+			x=x.concat(str2);
+			//	 System.out.println(x);
+		}
+		//	 System.out.println(x);
+
+		return x;	  
+	}
+	public static String nextState ( int numberOfAtrr , String currntState)
+	{
+
+		Random randomGenerator = new Random();
+		int opration ;//if 0 then delete column if 1 then add a column
+
+		String []tokene = currntState.split(",");
+		if(tokene.length==(numberOfAtrr-1 ))//thats mean we can't add more column to delete
+			opration=0;
+		else if (tokene.length==1)
+			opration=1;
+		else
+			opration = randomGenerator.nextInt(2);
+		//System.out.println("opration"+opration);
+
+		String nextState="";
+		if (opration==1)//add another column to delete
+		{
+			int nextDelete = randomGenerator.nextInt(numberOfAtrr) + 1;
+			//System.out.println("nextDelete"+nextDelete);
+			String str2 = Integer.toString(nextDelete);
+			str2=","+str2;
+			nextState=currntState.concat(str2);
+		}
+		else // remove a number which mean add another column
+		{
+			int index=1;
+			int whichOneToRemove = randomGenerator.nextInt(tokene.length);//get the index to remove
+			//	System.out.println("whichOneToRemove"+whichOneToRemove);
+			if (whichOneToRemove==0) {
+				nextState=tokene[1];
+				index=2;
+			}
+			else
+				nextState=tokene[0];
+
+
+			for(int i = index;i<tokene.length;i++)
+			{
+				if(i==whichOneToRemove)
+					continue;
+				nextState=nextState+","+tokene[i]; 
+
+			}
+
+
+		}
+		//System.out.println(nextState);
+
+		return nextState; 
+
+
+	}
+	public static String [] hillClimping( Instances train)throws  Exception 
+	{
+
+		int numberOfAtrr= train.numAttributes();
+		int numberofitration=0 ;
+		String bestSolution=initalSolution(numberOfAtrr);
+		double h_for_bestSolution=filtring(bestSolution,train);
+		int num=0;
+		boolean shouldContinue=false;
+		do {
+			// Select a random neighbour
+			num++;
+			String nextState=nextState(numberOfAtrr, bestSolution);//next
+			//		System.out.println(nextState);
+			double h_for_nextSolution =filtring(nextState,train);
+			// If a new solution's value is greater than current, best solution
+			if (h_for_bestSolution < h_for_nextSolution) {
+				// Change the best solution
+
+				bestSolution = nextState;
+				h_for_bestSolution = h_for_nextSolution;
+
+				// And continue searching
+				shouldContinue = true;
+				numberofitration =0;
+				String h1 = String.format("%.2f",h_for_bestSolution);
+
+				System.out.println("#"+num+"    "+h1+" %    Repeated:"+numberofitration); 
+
+				//	System.out.println(h1);
+			}
+
+			else {
+				// Otherwise stop
+				if(numberofitration ==100)
+					shouldContinue = false;
+				else {
+					shouldContinue = true;
+					++numberofitration;
+					//	System.out.println("number of itararion is : "+(numberofitration));
+
+					String h1 = String.format("%.2f",h_for_bestSolution);
+					System.out.println("#"+num+"    "+h1+" %    Repeated:"+numberofitration); 
+					//System.out.println(h1);
+
+
+				}
+
+			}
+
+		} while (shouldContinue);
+
+
+		String []result ={""+num , ""+h_for_bestSolution};
+		return result;
+
+	}
+	public static String[] SA( Instances train,double tempr, double alpha)throws  Exception 
+	{
+		Random randomGenerator = new Random();
+		int numberOfAtrr= train.numAttributes();
+		int numberofitration=0 ;
+		String bestSolution=initalSolution(numberOfAtrr);
+		double h_for_bestSolution=filtring(bestSolution,train);
+		double function;
+		int num=0;
+
+		boolean shouldContinue=false;
+		do {
+			num++;
+			// Select a random neighbour
+			String nextState=nextState(numberOfAtrr, bestSolution);//next
+			//		System.out.println(nextState);
+			double h_for_nextSolution =filtring(nextState,train);
+			// If a new solution's value is greater than current, best solution
+			if (h_for_bestSolution < h_for_nextSolution) {
+				// Change the best solution
+				bestSolution = nextState;
+				h_for_bestSolution = h_for_nextSolution;
+				String h1 = String.format("%.2f",h_for_nextSolution);
+
+				//System.out.println(h1);
+				// And continue searching
+				shouldContinue = true;
+				numberofitration =0;
+				System.out.println("#"+num+"    "+h1+" %    Repeated:"+numberofitration);
+			}
+
+			else {
+				double delta=h_for_bestSolution -h_for_nextSolution;
+				function =Math.exp(-delta/tempr);
+				double R=0.001*(randomGenerator.nextInt(1000));
+				if (R < function)
+				{
+					// Change the best solution
+					bestSolution = nextState;
+					h_for_bestSolution = h_for_nextSolution;
+
+					String h1 = String.format("%.2f",h_for_nextSolution);
+
+					//	System.out.println(""+h1);
+
+					// And continue searching
+					shouldContinue = true;
+					numberofitration =0;
+					System.out.println("#"+num+"    "+h1+" %    Repeated:"+numberofitration); 
+				}
+
+				// Otherwise stop after 100 iteration
+				else if(numberofitration ==100)
+					shouldContinue = false;
+				else {
+					shouldContinue = true;
+					numberofitration++;
+					String h1 = String.format("%.2f",h_for_bestSolution);
+					System.out.println("#"+num+"    "+h1+" %    Repeated:"+numberofitration); 
+					//	System.out.println(""+h1);
+
+				}
+			}
+			tempr*=alpha;
+		} while (shouldContinue);
+
+
+		String []result ={""+num , ""+h_for_bestSolution};
+		return result;
+	}
+}
